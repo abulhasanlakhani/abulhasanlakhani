@@ -5,17 +5,15 @@ const replaceAll = require('string.prototype.replaceall');
 const { JSDOM } = require('jsdom');
 const FileType = require('file-type');
 
-const DLIMAGES = false;
-
 function getImageName(path) {
   return path.split('/').pop();
 }
 
-function findImagePaths(content) {
-  const DOM = new JSDOM(content);
-  const imgs = DOM.window.document.querySelectorAll('img');
-  return Array.from(imgs).map(img => img.src);
-}
+// function findImagePaths(content) {
+//   const DOM = new JSDOM(content);
+//   const imgs = DOM.window.document.querySelectorAll('img');
+//   return Array.from(imgs).map(img => img.src);
+// }
 
 async function categoryGetter() {
   const tags = await fetch(
@@ -38,60 +36,69 @@ async function getPosts() {
 }
 
 function replacify(text) {
+  let replacedText;
   // this replaces all kinds of stuff that needs to be converted back to markdown, or makes gatsby MDX choke
-  text = Html5Entities.decode(text);
+  replacedText = Html5Entities.decode(text);
 
-  text = replaceAll(text, '<p style="text-align: left;">', '<p>');
-  text = replaceAll(
-    text,
+  replacedText = replaceAll(
+    replacedText,
+    '<p style="text-align: left;">',
+    '<p>'
+  );
+  replacedText = replaceAll(
+    replacedText,
     '<img src="facebook-share2.png">',
     '<img src="facebook-share2.png" />'
   );
 
-  text = replaceAll(text, '<br>', '<br/>');
-  text = replaceAll(text, '<hr>', '<hr/>');
-  text = replaceAll(text, '<li>', '* ');
-  text = replaceAll(text, '</li>', '\n');
-  text = replaceAll(text, '<ul>', '\n');
-  text = replaceAll(text, '</ul>', '');
-  text = replaceAll(text, '<ol>', '\n');
-  text = replaceAll(text, '</ol>', '');
-  text = replaceAll(text, '<strong>', '**');
-  text = replaceAll(text, '</strong>', '**');
-  text = replaceAll(
-    text,
+  replacedText = replaceAll(replacedText, '<br>', '<br/>');
+  replacedText = replaceAll(replacedText, '<hr>', '<hr/>');
+  replacedText = replaceAll(replacedText, '<li>', '* ');
+  replacedText = replaceAll(replacedText, '</li>', '\n');
+  replacedText = replaceAll(replacedText, '<ul>', '\n');
+  replacedText = replaceAll(replacedText, '</ul>', '');
+  replacedText = replaceAll(replacedText, '<ol>', '\n');
+  replacedText = replaceAll(replacedText, '</ol>', '');
+  replacedText = replaceAll(replacedText, '<strong>', '**');
+  replacedText = replaceAll(replacedText, '</strong>', '**');
+  replacedText = replaceAll(
+    replacedText,
     '<img src="iphone-tel.gif">',
     '<img src="iphone-tel.gif"/>'
   );
-  text = replaceAll(text, '<style>.entry-utility {clear:both;}</style>', '');
-  text = replaceAll(
-    text,
+  replacedText = replaceAll(
+    replacedText,
+    '<style>.entry-utility {clear:both;}</style>',
+    ''
+  );
+  replacedText = replaceAll(
+    replacedText,
     `<ul class="blocks-gallery-grid"><li class="blocks-gallery-item">`,
     ''
   );
-  text = replaceAll(
-    text,
+  replacedText = replaceAll(
+    replacedText,
     '<h2>`git diff --shortstat "@{0 day ago}"`</h2>',
     '## `git diff --shortstat "@{0 day ago}"`'
   );
-  text = replaceAll(text, `2797" >`, `2797" />`);
-  text = replaceAll(text, `springboard!</h3>`, `springboard!`);
+  replacedText = replaceAll(replacedText, `2797" >`, `2797" />`);
+  replacedText = replaceAll(replacedText, `springboard!</h3>`, `springboard!`);
 
-  return text;
+  return replacedText;
 }
 
-async function downloadImage(remotePath, localFolder) {
-  console.log(`Downloading ${remotePath} to ${localFolder}`);
-  const imageData = await fetch(remotePath).then(res => res.buffer());
-  console.log(`~~~Doing ${remotePath}`);
-  const { ext } = await FileType.fromBuffer(imageData);
-  const imageName = getImageName(remotePath);
-  const [, extension] = imageName.split('.');
-  await fs.writeFile(
-    `${localFolder}/${imageName}${extension ? '' : `.${ext}`}`,
-    imageData
-  );
-}
+// async function downloadImage(remotePath, localFolder) {
+//   console.log(`Downloading ${remotePath} to ${localFolder}`);
+//   const imageData = await fetch(remotePath).then(res => res.buffer());
+//   console.log(`~~~Doing ${remotePath}`);
+//   const { ext } = await FileType.fromBuffer(imageData);
+//   const imageName = getImageName(remotePath);
+//   const [, extension] = imageName.split('.');
+//   await fs.writeFile(
+//     `${localFolder}/${imageName}${extension ? '' : `.${ext}`}`,
+//     imageData
+//   );
+// }
 
 async function go() {
   const posts = await getPosts();
