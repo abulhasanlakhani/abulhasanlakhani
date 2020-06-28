@@ -4,9 +4,18 @@ const { Html5Entities } = require('html-entities');
 const replaceAll = require('string.prototype.replaceall');
 const { JSDOM } = require('jsdom');
 const FileType = require('file-type');
+const { func } = require('prop-types');
 
 function getImageName(path) {
   return path.split('/').pop();
+}
+
+function getFolder(folderName) {
+  const decodedFolderName = Html5Entities.decode(folderName)
+    .trim()
+    .replace(':', ' - ');
+
+  return decodedFolderName.replace(/[^A-Za-z0-9 \-:]/g, '');
 }
 
 // function findImagePaths(content) {
@@ -24,6 +33,18 @@ async function categoryGetter() {
   };
 }
 
+async function getCategories(parentId) {
+  const categories = fetch(
+    `https://abulhasanlakhani.com/wp-json/wp/v2/categories?parent=${parentId}&per_page=100&page=1`
+  ).then(x => x.json());
+
+  const cats = await categories;
+
+  const content = cats.flat();
+
+  return content;
+}
+
 async function getPosts() {
   const p1 = fetch(
     'https://abulhasanlakhani.com/wp-json/wp/v2/posts?per_page=100&page=1'
@@ -35,6 +56,14 @@ async function getPosts() {
   return content;
 }
 
+async function getPostsByArtist(artistId) {
+  const p1 = fetch(
+    `https://abulhasanlakhani.com/wp-json/wp/v2/posts?categories=${artistId}&per_page=100&page=1`
+  ).then(x => x.json());
+  const content = (await p1).flat();
+  return content;
+}
+
 function replacify(text) {
   let replacedText;
   // this replaces all kinds of stuff that needs to be converted back to markdown, or makes gatsby MDX choke
@@ -43,6 +72,11 @@ function replacify(text) {
   replacedText = replaceAll(
     replacedText,
     '<p style="text-align: left;">',
+    '<p>'
+  );
+  replacedText = replaceAll(
+    replacedText,
+    '<p class="has-normal-font-size">',
     '<p>'
   );
   replacedText = replaceAll(
@@ -87,75 +121,86 @@ function replacify(text) {
   return replacedText;
 }
 
-// async function downloadImage(remotePath, localFolder) {
-//   console.log(`Downloading ${remotePath} to ${localFolder}`);
-//   const imageData = await fetch(remotePath).then(res => res.buffer());
-//   console.log(`~~~Doing ${remotePath}`);
-//   const { ext } = await FileType.fromBuffer(imageData);
-//   const imageName = getImageName(remotePath);
-//   const [, extension] = imageName.split('.');
-//   await fs.writeFile(
-//     `${localFolder}/${imageName}${extension ? '' : `.${ext}`}`,
-//     imageData
-//   );
-// }
+async function createCategoryFolders() {
+  const parentCategories = await getCategories(0);
 
-async function go() {
-  const posts = await getPosts();
-  const getCategory = await categoryGetter();
+  // const getCategory = await categoryGetter();
   await fs.mkdir(`./src/posts/`, { recursive: true });
   // loop over each post and make a folder for them
-  for (const post of posts) {
-    const title = Html5Entities.decode(post.title.rendered)
-      .trim()
-      .replace(':', ' - ');
-    const folder = title.replace(/[^A-Za-z0-9 \-:]/g, '');
-    const folderPath = `./src/posts/${folder}`.trim();
-    // const imgs = findImagePaths(post.content);
-    const contentWithBackticks = replacify(post.content.rendered);
-    // imgs.forEach(
-    //   img =>
-    //     (contentWithBackticks = contentWithBackticks.replace(
-    //       img,
-    //       getImageName(img)
-    //     ))
-    // );
-    // contentWithBackticks = replacify(contentWithBackticks);
 
-    // 1. Make a folder for that post
-    await fs.mkdir(folderPath, { recursive: true });
+  for (const category of parentCategories) {
+    const categoryFolder = getFolder(category.name);
+    const categoryFolderPath = `./src/posts/${categoryFolder}`.trim();
 
-    // 2. Save the raw contents to a mdx file
-    // 3. Save the title slug image tags date
-    const categories = post.categories.map(getCategory);
-    console.log('Fetching ', title);
-    const content = `---
-title: ${title}
+    // 1. Make a folder for the category
+    await fs.mkdir(categoryFolderPath, { recursive: true });
+
+    const artistsInCategory = await getCategories(category.id);
+
+    for (const artist of artistsInCategory) {
+      const artistFolder = getFolder(artist.name);
+      const artistFolderPath = `./src/posts/${categoryFolder}/${artistFolder}`.trim();
+
+      // 1. Make a folder for the category
+      await fs.mkdir(artistFolderPath, { recursive: true });
+
+      const postsByArtists = await getPostsByArtist(artist.id);
+
+      for (const post of postsByArtists) {
+        const postFolder = getFolder(post.title.rendered);
+        const postFolderPath = `./src/posts/${categoryFolder}/${artistFolder}/${postFolder}`.trim();
+
+        // 1. Make a folder for the category
+        await fs.mkdir(postFolderPath, { recursive: true });
+
+        const contentWithBackticks = replacify(post.content.rendered);
+
+        console.log('Fetching ', postFolder);
+        const content = `---
+title: ${postFolder}
 slug: ${post.slug}
-category:
-${categories.map(cat => ` - ${cat}`).join('\n')}
+category: 
+- ${category.name}
+artist: ${artist.name}
 date: ${post.date}
 id: ${post.id}
 ---
 
 ${contentWithBackticks}
 `.trim();
-
-    await fs.writeFile(`${folderPath}/${folder}.mdx`, content, {
-      encoding: 'utf-8',
-    });
-    // Fetch Featured Image
-    if (post.jetpack_featured_media_url) {
-      // 4. Download the feature image for each one
-      const imageData = await fetch(post.jetpack_featured_media_url).then(res =>
-        res.buffer()
-      );
-      await fs.writeFile(
-        `${folderPath}/${getImageName(post.jetpack_featured_media_url)}`,
-        imageData
-      );
+        await fs.writeFile(`${postFolderPath}/${postFolder}.mdx`, content, {
+          encoding: 'utf-8',
+        });
+        // Fetch Featured Image
+        if (post.jetpack_featured_media_url) {
+          // 4. Download the feature image for each one
+          const imageData = await fetch(
+            post.jetpack_featured_media_url
+          ).then(res => res.buffer());
+          await fs.writeFile(
+            `${postFolderPath}/${getImageName(
+              post.jetpack_featured_media_url
+            )}`,
+            imageData
+          );
+        }
+      }
     }
   }
+}
+
+async function go() {
+  await createCategoryFolders();
+
+  // const posts = await getPostsByCategory();
+  // for (const post of posts) {
+  //   const title = Html5Entities.decode(post.title.rendered)
+  //     .trim()
+  //     .replace(':', ' - ');
+  //   const folder = title.replace(/[^A-Za-z0-9 \-:]/g, '');
+  //   const folderPath = `./src/posts/${folder}`.trim();
+  //   // const imgs = findImagePaths(post.content);
+  // }
 }
 
 go();
